@@ -23,16 +23,25 @@ static void configure_batt_adc(){
     esp_adc_cal_characterize(UNIT, ATTEN, WIDTH, VREF, batt_adc_characteristics);
 }
 
-// Read ADC voltage from battery and return battery voltage calculated from adc and voltage divider
-float get_battery_voltage() {
+// Returns voltage of the ADC that corresponds to the battery
+// If the ESP32 ADC channels change the channel needs to be updated
+static uint32_t get_batt_adc_reading(void)
+{
     if(!batt_adc_characteristics) {
         configure_batt_adc();
     }
 
     uint32_t reading = adc1_get_raw(CHANNEL);
-    float voltage = esp_adc_cal_raw_to_voltage(reading, batt_adc_characteristics) / 1000.0;
+    return reading;
+}
 
-    ESP_LOGI("ADC", "Battery Read RAW = %.2f V, CONVERTED = %.2f V", voltage, voltage*VDIV_RATIO);
+// Read ADC voltage from battery and return battery voltage calculated from adc and voltage divider
+float get_battery_voltage() {
+
+    uint32_t reading = get_batt_adc_reading();
+    float voltage = esp_adc_cal_raw_to_voltage(reading, batt_adc_characteristics) / 1000.0;
     
+    ESP_LOGI("ADC", "Battery Read RAW = %.2f V, CONVERTED = %.2f V", voltage, voltage*VDIV_RATIO);
+
     return voltage*VDIV_RATIO;
 }
