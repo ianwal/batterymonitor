@@ -43,7 +43,7 @@ void vReadAndUploadVoltage() {
     add_entity_attribute("unit_of_measurement", "Volts", entity);
     post_entity(entity);
     //HAEntity_print(entity);
-    HAEntity_destroy(entity); 
+    HAEntity_Delete(entity); 
 }
 
 static void deep_sleep_task(void *args)

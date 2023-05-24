@@ -51,8 +51,8 @@ void test_sensor_upload(void){
     // HA only stores floats to 2 decimal places it seems
     float epsilon = 1e-2;
 
-    HAEntity_destroy(entity);
-    HAEntity_destroy(newEntity);
+    HAEntity_Delete(entity);
+    HAEntity_Delete(newEntity);
     TEST_ASSERT_FLOAT_WITHIN(epsilon, state, fstate); 
 }
 
