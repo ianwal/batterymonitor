@@ -44,6 +44,7 @@ void test_sensor_upload(void){
     post_entity(entity);
 
     HAEntity* newEntity = get_entity(entity_id);
+    TEST_ASSERT_NOT_NULL(newEntity);
     float fstate = strtof(newEntity->state, NULL);   
     
     ESP_LOGI(TAG, "Uploaded: %f, Received %f", state, fstate); 
@@ -51,8 +52,8 @@ void test_sensor_upload(void){
     // HA only stores floats to 2 decimal places it seems
     float epsilon = 1e-2;
 
-    HAEntity_Delete(entity);
-    HAEntity_Delete(newEntity);
+    HAEntity_delete(entity);
+    HAEntity_delete(newEntity);
     TEST_ASSERT_FLOAT_WITHIN(epsilon, state, fstate); 
 }
 
