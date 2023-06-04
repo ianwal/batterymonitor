@@ -2,7 +2,7 @@
 #include "esp_adc_cal.h"
 #include "esp_log.h"
 
-#define CHANNEL ADC1_CHANNEL_4
+#define CHANNEL ADC1_CHANNEL_3
 #define ATTEN ADC_ATTEN_DB_11
 #define WIDTH ADC_WIDTH_BIT_12
 #define UNIT ADC_UNIT_1
@@ -10,6 +10,8 @@
 
 // Calibrate the battery voltage measurement based on the resistor voltage divider
 #define VDIV_RATIO 5.02
+
+static const char *TAG = "Battery";
 
 esp_adc_cal_characteristics_t* batt_adc_characteristics;
 
@@ -41,7 +43,7 @@ float get_battery_voltage() {
     uint32_t reading = get_batt_adc_reading();
     float voltage = esp_adc_cal_raw_to_voltage(reading, batt_adc_characteristics) / 1000.0;
     
-    ESP_LOGI("ADC", "Battery Read RAW = %.2f V, CONVERTED = %.2f V", voltage, voltage*VDIV_RATIO);
+    ESP_LOGI(TAG, "RAW = %.2f V, CONVERTED = %.2f V", voltage, voltage*VDIV_RATIO);
 
     return voltage*VDIV_RATIO;
 }
