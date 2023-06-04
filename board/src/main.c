@@ -22,12 +22,6 @@
 #include "esp_ha_lib.h"
 #include "wifi.h"
 
-#if SOC_RTC_FAST_MEM_SUPPORTED
-static RTC_DATA_ATTR struct timeval sleep_enter_time;
-#else
-static struct timeval sleep_enter_time;
-#endif
-
 static const char *TAG = "Main";
 
 void upload_battery() {
@@ -52,21 +46,6 @@ void upload_battery() {
 // Connects to Wi-Fi and uploads battery then enters deep sleep
 static void deep_sleep_task(void *args)
 {
-    //Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
-
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    int sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 + (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
-
-    ESP_LOGI(TAG, "Wake up from timer. Time spent in deep sleep: %dms\n", sleep_time_ms);
-
     wifi_init_sta();
     if(is_wifi_connected()){
         upload_battery();
@@ -74,10 +53,7 @@ static void deep_sleep_task(void *args)
 
     ESP_LOGI(TAG, "Entering deep sleep\n");
 
-    // get deep sleep enter time
-    gettimeofday(&sleep_enter_time, NULL);
-
-    // Task does not need to be deleted because deep sleep wipes 
+    // Task does not need to be deleted because deep sleep does not power RAM 
     esp_wifi_stop();
     esp_deep_sleep_start();
 }
