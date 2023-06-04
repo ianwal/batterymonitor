@@ -30,10 +30,10 @@ static struct timeval sleep_enter_time;
 
 static const char *TAG = "Main";
 
-void vReadAndUploadVoltage() {
+void upload_battery() {
     set_ha_url(HA_URL);
     set_long_lived_access_token(LONG_LIVED_ACCESS_TOKEN);
-    
+ 
     HAEntity* entity = HAEntity_create();
     entity->state = malloc(8);
     snprintf(entity->state, 8, "%.2f", get_battery_voltage());
@@ -41,11 +41,15 @@ void vReadAndUploadVoltage() {
 
     add_entity_attribute("friendly_name", "Car Battery Voltage", entity);
     add_entity_attribute("unit_of_measurement", "Volts", entity);
+
+    ESP_LOGI(TAG, "Uploading battery to %s", HA_URL);
     post_entity(entity);
-    //HAEntity_print(entity);
+
+    HAEntity_print(entity);
     HAEntity_delete(entity); 
 }
 
+// Connects to Wi-Fi and uploads battery then enters deep sleep
 static void deep_sleep_task(void *args)
 {
     //Initialize NVS
@@ -64,13 +68,17 @@ static void deep_sleep_task(void *args)
     ESP_LOGI(TAG, "Wake up from timer. Time spent in deep sleep: %dms\n", sleep_time_ms);
 
     wifi_init_sta();
-    vReadAndUploadVoltage();
+    if(is_wifi_connected()){
+        upload_battery();
+    }
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
     ESP_LOGI(TAG, "Entering deep sleep\n");
 
     // get deep sleep enter time
     gettimeofday(&sleep_enter_time, NULL);
+
+    // Task does not need to be deleted because deep sleep wipes 
+    esp_wifi_stop();
     esp_deep_sleep_start();
 }
 
