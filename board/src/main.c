@@ -23,47 +23,82 @@
 #include "wifi.h"
 
 static const char *TAG = "Main";
+static const uint64_t wakeup_time_sec = 1800; // 1800 sec = 30 minutes
+static const uint32_t hard_sleep_timeout_sec = 10; // max time awake
 
-void upload_battery() {
-    set_ha_url(HA_URL);
-    set_long_lived_access_token(LONG_LIVED_ACCESS_TOKEN);
- 
-    HAEntity* entity = HAEntity_create();
-    entity->state = malloc(8);
-    snprintf(entity->state, 8, "%.2f", get_battery_voltage());
-    strcpy(entity->entity_id, "sensor.car_battery");
+// Read and upload battery.
+static void upload_battery_task(void *args) {
+    while(1) {
+        HAEntity* entity = HAEntity_create();
+        entity->state = malloc(8);
+        snprintf(entity->state, 8, "%.2f", get_battery_voltage());
+        strcpy(entity->entity_id, "sensor.car_battery");
 
-    add_entity_attribute("friendly_name", "Car Battery Voltage", entity);
-    add_entity_attribute("unit_of_measurement", "Volts", entity);
+        add_entity_attribute("friendly_name", "Car Battery Voltage", entity);
+        add_entity_attribute("unit_of_measurement", "Volts", entity);
 
-    ESP_LOGI(TAG, "Uploading battery to %s", HA_URL);
-    post_entity(entity);
-
-    HAEntity_print(entity);
-    HAEntity_delete(entity); 
+        HAEntity_print(entity);
+        ESP_LOGI(TAG, "Waiting for Wi-Fi to upload battery...");
+        if(wait_wifi(portMAX_DELAY)) {
+            ESP_LOGI(TAG, "Uploading battery to %s", HA_URL);
+            post_entity(entity);
+            ESP_LOGI(TAG, "Battery upload attempted.");
+        } else {
+            ESP_LOGI(TAG, "upload_battery timed out. Retrying...");
+        }
+        HAEntity_delete(entity);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
 
-// Connects to Wi-Fi and uploads battery then enters deep sleep
-static void deep_sleep_task(void *args)
+// Turn off peripherals and enters deep sleep
+static void start_deep_sleep()
 {
-    wifi_init_sta();
-    if(is_wifi_connected()){
-        upload_battery();
-    }
-
-    ESP_LOGI(TAG, "Entering deep sleep\n");
-
-    // Task does not need to be deleted because deep sleep does not power RAM 
+    ESP_LOGI(TAG, "Shutting down peripherals.");
     esp_wifi_stop();
+    
+    ESP_LOGI(TAG, "Entering Deep Sleep");
     esp_deep_sleep_start();
+}
+
+// Connects to Wi-Fi and suspends
+static void start_wifi_task(void *args)
+{
+    while(1) {
+        wifi_init_sta();
+        vTaskSuspend(NULL);
+    }
 }
 
 void app_main(void)
 {
-    const uint64_t wakeup_time_sec = 60;
+    set_ha_url(HA_URL);
+    set_long_lived_access_token(LONG_LIVED_ACCESS_TOKEN);
+
     ESP_LOGI(TAG, "Enabling timer wakeup, %llds\n", wakeup_time_sec);
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000));
 
-    xTaskCreate(deep_sleep_task, "deep_sleep_task", 4096, NULL, 6, NULL);
+    // Connect to Wi-Fi
+    pre_wifi_setup();
+    TaskHandle_t wifi_task_handle = NULL;
+    xTaskCreate(start_wifi_task, "start wifi task", 4096, NULL, 5, &wifi_task_handle);
+
+    // Upload battery
+    TaskHandle_t upload_battery_task_handle = NULL;
+    xTaskCreate(upload_battery_task, "upload battery task", 8192, NULL, 1, &upload_battery_task_handle);
+
+    // Calls deep sleep after a set amount of time 
+    vTaskDelay(pdMS_TO_TICKS(hard_sleep_timeout_sec * 1000));
+    ESP_LOGI(TAG, "Deep Sleep timeout reached");
+ 
+    if(wifi_task_handle) {
+        vTaskDelete(wifi_task_handle);
+        wifi_task_handle = NULL;
+    }
+    if(upload_battery_task_handle) {
+        vTaskDelete(upload_battery_task_handle);
+        upload_battery_task_handle = NULL;
+    }
+    start_deep_sleep();
 }
 #endif
