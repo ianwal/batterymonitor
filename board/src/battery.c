@@ -24,12 +24,25 @@ static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_att
     bool calibrated = false;
 
     if (!calibrated) {
+        #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
         adc_cali_curve_fitting_config_t cali_config = {
             .unit_id = unit,
+            .chan = channel,
             .atten = atten,
             .bitwidth = bitwidth,
         };
         ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
+
+
+        #elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+        adc_cali_line_fitting_config_t cali_config = {
+            .unit_id = unit,
+            .atten = atten,
+            .bitwidth = bitwidth,
+        };
+        ret = adc_cali_create_scheme_line_fitting(&cali_config, &handle);
+        #endif
+
         if (ret == ESP_OK) {
             calibrated = true;
         }
@@ -70,7 +83,12 @@ static void config_batt_adc()
 // Deinitialize calibration of an ADC handle
 static void adc_calibration_deinit(adc_cali_handle_t handle)
 {
+    #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
     ESP_ERROR_CHECK(adc_cali_delete_scheme_curve_fitting(handle));
+
+    #elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(handle));
+    #endif
 }
 
 // Read ADC voltage from battery and return battery voltage calculated from the ADC and voltage divider
