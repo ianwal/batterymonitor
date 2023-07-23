@@ -1,10 +1,10 @@
+#include "wifi.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "freertos/event_groups.h"
-#include "nvs_flash.h"
 #include "secrets.h"
-
-#define EXAMPLE_ESP_MAXIMUM_RETRY 10
+#include <stdbool.h>
+#include <stdint.h>
 
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
 
@@ -16,11 +16,12 @@
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_DISCONNECTED_BIT BIT1
+#define WIFI_STOPPED_BIT BIT2
 
-// Signal when we are connected
 static EventGroupHandle_t s_wifi_event_group;
 
 static int s_retry_num = 0;
+static const int MAXIMUM_RETRY = 10;
 
 static const char *TAG = "WiFi";
 
@@ -30,7 +31,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
                 esp_wifi_connect();
         } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
                 xEventGroupSetBits(s_wifi_event_group, WIFI_DISCONNECTED_BIT);
-                if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
+                if (s_retry_num < MAXIMUM_RETRY) {
                         esp_wifi_connect();
                         s_retry_num++;
                         ESP_LOGI(TAG, "Retrying connection to AP");
@@ -42,8 +43,18 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
                 s_retry_num = 0;
                 xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP) {
-                xEventGroupSetBits(s_wifi_event_group, WIFI_DISCONNECTED_BIT);
+                xEventGroupSetBits(s_wifi_event_group, WIFI_STOPPED_BIT);
         }
+}
+
+bool wait_wifi_connected(TickType_t timeout)
+{
+        EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, timeout);
+
+        if (bits & WIFI_CONNECTED_BIT)
+                return true;
+
+        return false;
 }
 
 bool wait_wifi(TickType_t timeout)
@@ -61,27 +72,30 @@ bool wait_wifi(TickType_t timeout)
         return false;
 }
 
-void pre_wifi_setup()
+void stop_wifi()
 {
-        // Initialize NVS
-        esp_err_t ret = nvs_flash_init();
-        if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-                ESP_ERROR_CHECK(nvs_flash_erase());
-                ret = nvs_flash_init();
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
+        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+        esp_wifi_stop();
+        EventBits_t bits =
+            xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
+        if (bits & WIFI_STOPPED_BIT) {
+                ESP_LOGI(TAG, "WiFi stopped.");
+        } else {
+                ESP_LOGE(TAG, "WiFi did not stop within the timeout period.");
+                return;
         }
-        ESP_ERROR_CHECK(ret);
-
-        s_wifi_event_group = xEventGroupCreate();
-        // Set WiFi to disconnected by default
-        xEventGroupSetBits(s_wifi_event_group, WIFI_DISCONNECTED_BIT);
+        vEventGroupDelete(s_wifi_event_group);
 }
 
 void wifi_init_sta(void)
 {
         ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
 
-        ESP_ERROR_CHECK(esp_netif_init());
+        s_wifi_event_group = xEventGroupCreate();
+        xEventGroupSetBits(s_wifi_event_group, WIFI_DISCONNECTED_BIT);
 
+        ESP_ERROR_CHECK(esp_netif_init());
         ESP_ERROR_CHECK(esp_event_loop_create_default());
         esp_netif_create_default_wifi_sta();
 

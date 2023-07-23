@@ -5,9 +5,6 @@
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
-#include "freertos/task.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
 #include "nvs_flash.h"
@@ -32,30 +29,30 @@ static float epsilon = 1e-2;
 
 void test_sensor_upload(void)
 {
-        // entity name cannot contain special characters other than _ or . it appears
-        char *entity_id = "sensor.esphalibtest";
-        char *friendly_entity_name = "esp ha lib test";
-        char *unit_of_measurement = "Test Units";
-        float state = get_battery_voltage();
-
-        HAEntity *entity = HAEntity_create();
-        entity->state = malloc(8);
-        snprintf(entity->state, 8, "%.2f", state);
-        strcpy(entity->entity_id, entity_id);
-        add_entity_attribute("friendly_name", friendly_entity_name, entity);
-        add_entity_attribute("unit_of_measurement", unit_of_measurement, entity);
-
+        HAEntity *entity = get_battery_entity();
+        TEST_ASSERT_NOT_NULL(entity);
         post_entity(entity);
 
-        HAEntity *newEntity = get_entity(entity_id);
+        HAEntity *newEntity = get_entity(entity->entity_id);
         TEST_ASSERT_NOT_NULL(newEntity);
-        float fstate = strtof(newEntity->state, NULL);
+        float state = battery_entity_value(entity);
+        float fstate = battery_entity_value(newEntity);
 
         ESP_LOGI(TAG, "Uploaded: %f, Received %f", state, fstate);
 
-        HAEntity_delete(entity);
         HAEntity_delete(newEntity);
+        HAEntity_delete(entity);
         TEST_ASSERT_FLOAT_WITHIN(epsilon, state, fstate);
+}
+
+void init_nvs()
+{
+        esp_err_t ret = nvs_flash_init();
+        if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+                ESP_ERROR_CHECK(nvs_flash_erase());
+                ret = nvs_flash_init();
+        }
+        ESP_ERROR_CHECK(ret);
 }
 
 int runUnityTests(void)
@@ -67,6 +64,9 @@ int runUnityTests(void)
 
 void app_main(void)
 {
+        set_ha_url(HA_URL);
+        set_long_lived_access_token(LONG_LIVED_ACCESS_TOKEN);
+        init_nvs();
         wifi_init_sta();
         runUnityTests();
 }

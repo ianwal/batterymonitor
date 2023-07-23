@@ -1,7 +1,10 @@
+#include "battery.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
+#include "esp_ha_lib.h"
 #include "esp_log.h"
+#include <string.h>
 
 #define BATT_VOLTAGE_ADC_CHANNEL ADC_CHANNEL_3
 #define BATT_VOLTAGE_ADC_ATTEN ADC_ATTEN_DB_11
@@ -122,4 +125,25 @@ float get_battery_voltage()
                 adc_calibration_deinit(batt_voltage_adc_cali_handle);
 
         return (voltage[0][0] / 1000.f) * VDIV_RATIO;
+}
+
+float battery_entity_value(HAEntity *entity) { return strtof(entity->state, NULL); }
+
+HAEntity *get_battery_entity()
+{
+        HAEntity *entity = HAEntity_create();
+        if (entity == NULL) {
+                ESP_LOGE(TAG, "Failed to create battery entity");
+                return NULL;
+        }
+        entity->state = malloc(8);
+        if (entity->state == NULL) {
+                ESP_LOGE(TAG, "Failed to allocate memory for battery state");
+                return NULL;
+        }
+        snprintf(entity->state, 8, "%.2f", get_battery_voltage());
+        strcpy(entity->entity_id, "sensor.car_battery");
+        add_entity_attribute("friendly_name", "Car Battery Voltage", entity);
+        add_entity_attribute("unit_of_measurement", "Volts", entity);
+        return entity;
 }

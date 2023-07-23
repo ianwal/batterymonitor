@@ -1,5 +1,10 @@
 #pragma once
 
+#include "freertos/FreeRTOS.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+bool wait_wifi_connected(TickType_t timeout);
 bool wait_wifi(TickType_t timeout);
-void pre_wifi_setup(void);
 void wifi_init_sta(void);
+void stop_wifi();
