@@ -94,4 +94,26 @@ fp-info-cache
 *.csv
 
 # VSCode
-*.vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+board/.vscode/c_cpp_properties.json
+board/.vscode/launch.json
+!board/.vscode/settings.json
+!board/.vscode/tasks.json
+!board/.vscode/extensions.json
+!board/.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+.ionide
