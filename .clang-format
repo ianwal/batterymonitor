@@ -1,0 +1,9 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 8
+UseTab: Never
+TabWidth: 8
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: false
+ColumnLimit: 120
+---

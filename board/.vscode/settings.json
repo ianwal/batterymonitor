@@ -2,6 +2,9 @@
     "files.associations": {
         "cjson.h": "c"
     },
-    "editor.defaultFormatter": "ms-vscode.cpptools",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "xaver.clang-format",
+    "[c]": {
+        "editor.defaultFormatter": "xaver.clang-format"
+    },
 }
