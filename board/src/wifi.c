@@ -5,6 +5,7 @@
 #include "secrets.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
 
@@ -74,8 +75,10 @@ bool wait_wifi(TickType_t timeout)
 
 void stop_wifi()
 {
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
-        ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(
+            esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(
+            esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
         esp_wifi_stop();
         EventBits_t bits =
             xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
@@ -88,7 +91,8 @@ void stop_wifi()
         vEventGroupDelete(s_wifi_event_group);
 }
 
-void wifi_init_sta(void)
+// NVS must be init before this can be run
+bool wifi_init_sta(void)
 {
         ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
 
@@ -110,19 +114,27 @@ void wifi_init_sta(void)
             esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
 
         wifi_config_t wifi_config = {
-            .sta = {.ssid = NETWORK_SSID, .password = NETWORK_PASSWORD, .threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK},
+            .sta = {.ssid = NETWORK_SSID,
+                    .password = NETWORK_PASSWORD,
+                    /* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (pasword len =>
+                     * 8). If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold
+                     * value to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
+                     * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
+                     */
+                    .threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK},
         };
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_start());
 
-        ESP_LOGI(TAG, "wifi_init_sta finished.");
+        ESP_LOGV(TAG, "wifi_init_sta finished.");
 
         // Print if WiFi is connected currently
-        bool connected = wait_wifi(portMAX_DELAY);
+        bool connected = wait_wifi_connected(portMAX_DELAY);
         if (connected) {
-                ESP_LOGI(TAG, "Connected to AP SSID: '%s'", NETWORK_SSID);
+                ESP_LOGI(TAG, "Connected to AP SSID: '%s'", wifi_config.sta.ssid);
         } else {
-                ESP_LOGI(TAG, "Failed to connect to SSID: '%s'", NETWORK_SSID);
+                ESP_LOGI(TAG, "Failed to connect to SSID: '%s'", wifi_config.sta.ssid);
         }
+        return connected;
 }

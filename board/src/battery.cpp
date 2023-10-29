@@ -1,50 +1,55 @@
-#include "battery.h"
+extern "C" {
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
-#include "esp_ha_lib.h"
 #include "esp_log.h"
-#include <string.h>
+}
+
+#include "battery.hpp"
+#include "esp_ha_lib.hpp"
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 #define BATT_VOLTAGE_ADC_CHANNEL ADC_CHANNEL_3
 #define BATT_VOLTAGE_ADC_ATTEN ADC_ATTEN_DB_11
 #define BATT_VOLTAGE_ADC_BITWIDTH ADC_BITWIDTH_12
 #define ADC_UNIT ADC_UNIT_1
-#define ADC_VREF 1100
+constexpr int const ADC_VREF{1100};
 
 // Calibrate the battery voltage measurement
 // based on the resistor voltage divider
-#define VDIV_RATIO 5.02
+constexpr float const VDIV_RATIO{5.02f};
 
-static const char *TAG = "Battery";
+static constexpr const char *TAG{"Battery"};
 
 adc_oneshot_unit_handle_t batt_voltage_adc_handle;
-adc_cali_handle_t batt_voltage_adc_cali_handle = NULL;
+adc_cali_handle_t batt_voltage_adc_cali_handle{nullptr};
 
 static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_bitwidth_t bitwidth,
                                  adc_cali_handle_t *out_handle)
 {
-        adc_cali_handle_t handle = NULL;
-        esp_err_t ret = ESP_FAIL;
-        bool calibrated = false;
+        adc_cali_handle_t handle{nullptr};
+        esp_err_t ret{ESP_FAIL};
+        bool calibrated{false};
 
         if (!calibrated) {
 #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
-                adc_cali_curve_fitting_config_t cali_config = {
-                    .unit_id = unit,
-                    .chan = channel,
-                    .atten = atten,
-                    .bitwidth = bitwidth,
-                };
+                adc_cali_curve_fitting_config_t cali_config;
+                cali_config.unit_id = unit;
+                cali_config.chan = channel;
+                cali_config.atten = atten;
+                cali_config.bitwidth = bitwidth;
                 ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
 
 #elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
-                adc_cali_line_fitting_config_t cali_config = {
-                    .unit_id = unit,
-                    .atten = atten,
-                    .bitwidth = bitwidth,
-                };
+                adc_cali_line_fitting_config_t cali_config;
+                cali_config.unit_id = unit;
+                cali_config.atten = atten;
+                cali_config.bitwidth = bitwidth;
                 ret = adc_cali_create_scheme_line_fitting(&cali_config, &handle);
+#else
+#error "No ADC calibration scheme defined"
 #endif
 
                 if (ret == ESP_OK) {
@@ -70,28 +75,30 @@ static void config_batt_adc()
         ESP_LOGI(TAG, "Configuring ADC characteristics");
 
         // ADC1 Init
-        adc_oneshot_unit_init_cfg_t init_config1 = {
-            .unit_id = ADC_UNIT,
-            .ulp_mode = ADC_ULP_MODE_DISABLE,
-        };
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &batt_voltage_adc_handle));
+        adc_oneshot_unit_init_cfg_t init_config1;
+        init_config1.unit_id = ADC_UNIT;
+        init_config1.ulp_mode = ADC_ULP_MODE_DISABLE;
+        init_config1.clk_src = static_cast<adc_oneshot_clk_src_t>(ADC_DIGI_CLK_SRC_DEFAULT);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(adc_oneshot_new_unit(&init_config1, &batt_voltage_adc_handle));
 
         // ADC1 Config
-        adc_oneshot_chan_cfg_t config = {
-            .bitwidth = BATT_VOLTAGE_ADC_BITWIDTH,
-            .atten = BATT_VOLTAGE_ADC_ATTEN,
-        };
-        ESP_ERROR_CHECK(adc_oneshot_config_channel(batt_voltage_adc_handle, BATT_VOLTAGE_ADC_CHANNEL, &config));
+        adc_oneshot_chan_cfg_t config;
+        config.bitwidth = BATT_VOLTAGE_ADC_BITWIDTH;
+        config.atten = BATT_VOLTAGE_ADC_ATTEN;
+        ESP_ERROR_CHECK_WITHOUT_ABORT(
+            adc_oneshot_config_channel(batt_voltage_adc_handle, BATT_VOLTAGE_ADC_CHANNEL, &config));
 }
 
 // Deinitialize calibration of an ADC handle
 static void adc_calibration_deinit(adc_cali_handle_t handle)
 {
 #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
-        ESP_ERROR_CHECK(adc_cali_delete_scheme_curve_fitting(handle));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(adc_cali_delete_scheme_curve_fitting(handle));
 
 #elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
-        ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(handle));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(adc_cali_delete_scheme_line_fitting(handle));
+#else
+#error "No ADC calibration scheme defined"
 #endif
 }
 
@@ -109,9 +116,9 @@ float get_battery_voltage()
         ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT + 1, BATT_VOLTAGE_ADC_CHANNEL, adc_raw[0][0]);
 
         // ADC1 Calibration
-        bool do_calibration_batt_voltage =
-            adc_calibration_init(ADC_UNIT, BATT_VOLTAGE_ADC_CHANNEL, BATT_VOLTAGE_ADC_ATTEN, BATT_VOLTAGE_ADC_BITWIDTH,
-                                 &batt_voltage_adc_cali_handle);
+        bool const do_calibration_batt_voltage{adc_calibration_init(ADC_UNIT, BATT_VOLTAGE_ADC_CHANNEL,
+                                                                    BATT_VOLTAGE_ADC_ATTEN, BATT_VOLTAGE_ADC_BITWIDTH,
+                                                                    &batt_voltage_adc_cali_handle)};
 
         if (do_calibration_batt_voltage) {
                 ESP_ERROR_CHECK(adc_cali_raw_to_voltage(batt_voltage_adc_cali_handle, adc_raw[0][0], &voltage[0][0]));
@@ -127,23 +134,20 @@ float get_battery_voltage()
         return (voltage[0][0] / 1000.f) * VDIV_RATIO;
 }
 
-float battery_entity_value(HAEntity *entity) { return strtof(entity->state, NULL); }
-
-HAEntity *get_battery_entity()
+float battery_entity_value(HAEntity const &entity)
 {
-        HAEntity *entity = HAEntity_create();
-        if (entity == NULL) {
-                ESP_LOGE(TAG, "Failed to create battery entity");
-                return NULL;
-        }
-        entity->state = malloc(8);
-        if (entity->state == NULL) {
-                ESP_LOGE(TAG, "Failed to allocate memory for battery state");
-                return NULL;
-        }
-        snprintf(entity->state, 8, "%.2f", get_battery_voltage());
-        strcpy(entity->entity_id, "sensor.car_battery");
-        add_entity_attribute("friendly_name", "Car Battery Voltage", entity);
-        add_entity_attribute("unit_of_measurement", "Volts", entity);
+        std::string const st{entity.state};
+        // NOTE: if this is empty, this value is meaningless.
+        // std::stof causes crashes if it cannot parse this, but strtof does not.
+        return std::strtof(st.c_str(), nullptr);
+}
+
+HAEntity *create_battery_entity()
+{
+        HAEntity *entity = new HAEntity;
+        entity->state = std::to_string(get_battery_voltage());
+        entity->entity_id = "sensor.car_battery";
+        entity->add_attribute("friendly_name", "Car Battery Voltage");
+        entity->add_attribute("unit_of_measurement", "Volts");
         return entity;
 }
