@@ -1,10 +1,6 @@
 {
     "files.associations": {
-        "cjson.h": "c"
+        "cjson.h": "c",
     },
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format",
-    "[c]": {
-        "editor.defaultFormatter": "xaver.clang-format"
-    },
 }
