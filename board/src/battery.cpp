@@ -1,18 +1,15 @@
-extern "C" {
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
-}
 
 #include "battery.hpp"
-#include "esp_ha_lib.hpp"
-#include <cstdlib>
-#include <cstring>
-#include <memory>
 #include <string>
 
 namespace BatteryMonitor
+{
+
+namespace
 {
 
 #define BATT_VOLTAGE_ADC_CHANNEL ADC_CHANNEL_3
@@ -25,7 +22,9 @@ constexpr int const ADC_VREF{1100};
 // based on the resistor voltage divider
 constexpr float const VDIV_RATIO{5.02f};
 
-static constexpr const char *TAG{"Battery"};
+constexpr auto TAG{"Battery"};
+
+} // namespace
 
 adc_oneshot_unit_handle_t batt_voltage_adc_handle;
 adc_cali_handle_t batt_voltage_adc_cali_handle{nullptr};
@@ -136,7 +135,25 @@ float get_battery_voltage()
 std::unique_ptr<HAEntity> create_battery_entity()
 {
         auto entity = std::make_unique<HAEntity>();
-        entity->state = std::to_string(get_battery_voltage());
+        /*
+        // Can't use this right now, because it increases the flash usage by ~10%.
+        // But this would be preferable to std::to_string(float) for several reasons.
+        auto const battery_voltage_string = [] {
+                auto const voltage = get_battery_voltage();
+                std::array<char, 8> voltage_char_buffer;
+                auto const res =
+                    std::to_chars(voltage_char_buffer.data(), voltage_char_buffer.data() + voltage_char_buffer.size(),
+                                  voltage, std::chars_format::fixed, 3);
+                return std::string_view(voltage_char_buffer.data(), res.ptr);
+        }();
+        */
+        auto const battery_voltage_string = [] {
+                auto const voltage = get_battery_voltage();
+                auto result = std::to_string(voltage);
+                result.resize(8);
+                return result;
+        }();
+        entity->state = battery_voltage_string;
         entity->entity_id = "sensor.car_battery";
         entity->add_attribute("friendly_name", "Car Battery Voltage");
         entity->add_attribute("unit_of_measurement", "Volts");

@@ -14,21 +14,18 @@ namespace BatteryMonitor
 namespace Wifi
 {
 
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
-
-/*
- * The event group allows multiple bits for each event, but we only care about two events:
- * - Connected to the AP with an IP
- * - Failed to connect after the maximum amount of retries
- */
-
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_DISCONNECTED_BIT BIT1
-#define WIFI_STOPPED_BIT BIT2
-
 namespace
 {
 constexpr auto TAG{"Wi-Fi"};
+
+constexpr auto ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD = WIFI_AUTH_WPA_WPA2_PSK;
+
+// The event group allows multiple bits for each event, but we only care about two events:
+// - Connected to the AP with an IP
+// - Failed to connect after the maximum amount of retries
+constexpr EventBits_t WIFI_CONNECTED_BIT{BIT0};
+constexpr EventBits_t WIFI_DISCONNECTED_BIT{BIT1};
+constexpr EventBits_t WIFI_STOPPED_BIT{BIT2};
 
 EventGroupHandle_t s_wifi_event_group;
 
@@ -63,7 +60,7 @@ void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, voi
 bool wait_wifi_connected(TickType_t timeout)
 {
         auto const bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, timeout);
-        return Utils::are_bits_set(bits, EventBits_t{WIFI_CONNECTED_BIT});
+        return Utils::are_bits_set(bits, WIFI_CONNECTED_BIT);
 }
 
 bool wait_wifi(TickType_t timeout)
@@ -74,7 +71,7 @@ bool wait_wifi(TickType_t timeout)
                                               pdFALSE, timeout);
         // xEventGroupWaitBits() returns the bits before the call
         // returned, hence we can test which event actually happened
-        return Utils::are_bits_set(bits, EventBits_t{WIFI_CONNECTED_BIT});
+        return Utils::are_bits_set(bits, WIFI_CONNECTED_BIT);
 }
 
 void stop_wifi()
@@ -85,19 +82,19 @@ void stop_wifi()
         // ESP_ERROR_CHECK_WITHOUT_ABORT(
         //     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
         esp_wifi_stop();
-        auto const bits =
-            xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE, pdMS_TO_TICKS(1000));
-        auto const is_wifi_stopped = ((bits & WIFI_STOPPED_BIT) == WIFI_STOPPED_BIT);
+        auto const bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE,
+                                              Utils::to_ticks(std::chrono::seconds{1}));
+        auto const is_wifi_stopped = Utils::are_bits_set(bits, WIFI_STOPPED_BIT);
         if (is_wifi_stopped) {
-                ESP_LOGI(TAG, "WiFi stopped.");
                 vEventGroupDelete(s_wifi_event_group);
+                ESP_LOGI(TAG, "WiFi stopped.");
         } else {
                 ESP_LOGE(TAG, "WiFi did not stop within the timeout period.");
         }
 }
 
-// NVS must be init before this can be run
-bool wifi_init_station()
+// NOTE: NVS must be init before this can be run
+void wifi_init_station()
 {
         s_wifi_event_group = xEventGroupCreate();
         xEventGroupSetBits(s_wifi_event_group, WIFI_DISCONNECTED_BIT);
@@ -111,12 +108,12 @@ bool wifi_init_station()
 
         esp_event_handler_instance_t instance_any_id{nullptr};
         esp_event_handler_instance_t instance_got_ip{nullptr};
-        ESP_ERROR_CHECK(
-            esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
-        ESP_ERROR_CHECK(
-            esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, nullptr,
+                                                            &instance_any_id));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, nullptr,
+                                                            &instance_got_ip));
 
-        static wifi_config_t wifi_config; // This has to be static in order to be zero-initialized.
+        wifi_sta_config_t wifi_config{};
         // Ensure these are filled in. No point in running the program if they aren't.
         static_assert(!Secrets::NETWORK_SSID.empty());
         static_assert(!Secrets::NETWORK_PASSWORD.empty());
@@ -124,20 +121,13 @@ bool wifi_init_station()
         static_assert(Secrets::NETWORK_SSID.size() <= sizeof(wifi_sta_config_t::ssid));
         static_assert(Secrets::NETWORK_PASSWORD.size() <= sizeof(wifi_sta_config_t::password));
 
-        std::memcpy(wifi_config.sta.ssid, Secrets::NETWORK_SSID.data(), Secrets::NETWORK_SSID.size());
-        std::memcpy(wifi_config.sta.password, Secrets::NETWORK_PASSWORD.data(), Secrets::NETWORK_PASSWORD.size());
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-        ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_STA, &wifi_config));
+        std::memcpy(wifi_config.ssid, Secrets::NETWORK_SSID.data(), Secrets::NETWORK_SSID.size());
+        std::memcpy(wifi_config.password, Secrets::NETWORK_PASSWORD.data(), Secrets::NETWORK_PASSWORD.size());
+        wifi_config.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+        wifi_config_t u_wifi_config;
+        u_wifi_config.sta = wifi_config;
+        ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_STA, &u_wifi_config));
         ESP_ERROR_CHECK(esp_wifi_start());
-
-        // Print if WiFi is connected currently
-        auto const is_connected = wait_wifi_connected(portMAX_DELAY);
-        if (is_connected) {
-                ESP_LOGI(TAG, "Connected to AP SSID: '%s'", wifi_config.sta.ssid);
-        } else {
-                ESP_LOGI(TAG, "Failed to connect to SSID: '%s'", wifi_config.sta.ssid);
-        }
-        return is_connected;
 }
 
 } // namespace Wifi

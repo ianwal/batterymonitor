@@ -15,7 +15,7 @@ template <typename T>
 concept Duration = requires { typename std::chrono::duration_values<T>; };
 
 // Convert chrono duration to FreeRTOS ticks.
-template <Duration DurationType> constexpr auto to_ticks(DurationType duration) -> TickType_t
+template <Duration DurationType> consteval auto to_ticks(DurationType duration) -> TickType_t
 {
         auto const milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
         auto const raw_milliseconds = milliseconds.count();
