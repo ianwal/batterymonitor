@@ -1,7 +1,14 @@
 #pragma once
 
 #include "esp_ha_lib.hpp"
+#include <memory>
+
+namespace BatteryMonitor
+{
+
+using esphalib::state::HAEntity;
 
 float get_battery_voltage();
-float battery_entity_value(HAEntity const &entity);
-HAEntity *create_battery_entity();
+std::unique_ptr<HAEntity> create_battery_entity();
+
+}

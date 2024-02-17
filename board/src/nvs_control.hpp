@@ -1,3 +1,12 @@
 #pragma once
 
-bool init_nvs();
+namespace BatteryMonitor
+{
+
+namespace Nvs
+{
+
+bool init_nvs(void);
+
+} // namespace Nvs
+} // namespace BatteryMonitor

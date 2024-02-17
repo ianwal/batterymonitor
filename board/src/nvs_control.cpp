@@ -2,20 +2,30 @@ extern "C" {
 #include "esp_log.h"
 #include "nvs_flash.h"
 }
+#include "nvs_control.hpp"
 
-static constexpr const char *TAG{"NVS Control"};
+namespace BatteryMonitor
+{
+
+namespace Nvs
+{
+
+namespace
+{
+constexpr const char *TAG{"NVS Control"};
+}
 
 bool init_nvs()
 {
-        bool success{false};
-        esp_err_t ret_flash_init{nvs_flash_init()};
+        auto success = false;
+        auto const ret_flash_init = nvs_flash_init();
         if (ret_flash_init == ESP_ERR_NVS_NO_FREE_PAGES || ret_flash_init == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-                esp_err_t const ret_flash_erase{nvs_flash_erase()};
+                auto const ret_flash_erase = nvs_flash_erase();
                 ESP_ERROR_CHECK_WITHOUT_ABORT(ret_flash_erase);
                 if (ret_flash_erase == ESP_OK) {
-                        ret_flash_init = nvs_flash_init();
-                        ESP_ERROR_CHECK_WITHOUT_ABORT(ret_flash_init);
-                        success = (ret_flash_init == ESP_OK);
+                        auto const post_erase_ret_flash_init = nvs_flash_init();
+                        ESP_ERROR_CHECK_WITHOUT_ABORT(post_erase_ret_flash_init);
+                        success = (post_erase_ret_flash_init == ESP_OK);
                 } else {
                         success = false;
                 }
@@ -23,10 +33,10 @@ bool init_nvs()
                 success = true;
         }
 
-        if (success) {
-                ESP_LOGI(TAG, "NVS init successful.");
-        } else {
-                ESP_LOGI(TAG, "NVS init FAILURE.");
-        }
+        auto const msg = success ? "NVS init successful." : "NVS init failure.";
+        ESP_LOGI(TAG, "%s", msg);
         return success;
 }
+
+} // namespace Nvs
+} // namespace BatteryMonitor

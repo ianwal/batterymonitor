@@ -9,7 +9,11 @@ extern "C" {
 #include "esp_ha_lib.hpp"
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
+
+namespace BatteryMonitor
+{
 
 #define BATT_VOLTAGE_ADC_CHANNEL ADC_CHANNEL_3
 #define BATT_VOLTAGE_ADC_ATTEN ADC_ATTEN_DB_11
@@ -30,7 +34,7 @@ static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_att
                                  adc_cali_handle_t *out_handle)
 {
         adc_cali_handle_t handle{nullptr};
-        esp_err_t ret{ESP_FAIL};
+        auto ret = static_cast<esp_err_t>(ESP_FAIL);
         bool calibrated{false};
 
         if (!calibrated) {
@@ -51,10 +55,7 @@ static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_att
 #else
 #error "No ADC calibration scheme defined"
 #endif
-
-                if (ret == ESP_OK) {
-                        calibrated = true;
-                }
+                calibrated = (ret == ESP_OK);
         }
 
         *out_handle = handle;
@@ -82,9 +83,7 @@ static void config_batt_adc()
         ESP_ERROR_CHECK_WITHOUT_ABORT(adc_oneshot_new_unit(&init_config1, &batt_voltage_adc_handle));
 
         // ADC1 Config
-        adc_oneshot_chan_cfg_t config;
-        config.bitwidth = BATT_VOLTAGE_ADC_BITWIDTH;
-        config.atten = BATT_VOLTAGE_ADC_ATTEN;
+        adc_oneshot_chan_cfg_t const config{BATT_VOLTAGE_ADC_ATTEN, BATT_VOLTAGE_ADC_BITWIDTH};
         ESP_ERROR_CHECK_WITHOUT_ABORT(
             adc_oneshot_config_channel(batt_voltage_adc_handle, BATT_VOLTAGE_ADC_CHANNEL, &config));
 }
@@ -106,14 +105,14 @@ static void adc_calibration_deinit(adc_cali_handle_t handle)
 // voltage calculated from the ADC and voltage divider
 float get_battery_voltage()
 {
-        int adc_raw[1][10];
-        int voltage[1][10];
+        int raw_adc_read{};
+        int voltage{};
 
         config_batt_adc();
 
         // ADC1 Read
-        ESP_ERROR_CHECK(adc_oneshot_read(batt_voltage_adc_handle, BATT_VOLTAGE_ADC_CHANNEL, &adc_raw[0][0]));
-        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT + 1, BATT_VOLTAGE_ADC_CHANNEL, adc_raw[0][0]);
+        ESP_ERROR_CHECK(adc_oneshot_read(batt_voltage_adc_handle, BATT_VOLTAGE_ADC_CHANNEL, &raw_adc_read));
+        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT + 1, BATT_VOLTAGE_ADC_CHANNEL, raw_adc_read);
 
         // ADC1 Calibration
         bool const do_calibration_batt_voltage{adc_calibration_init(ADC_UNIT, BATT_VOLTAGE_ADC_CHANNEL,
@@ -121,33 +120,27 @@ float get_battery_voltage()
                                                                     &batt_voltage_adc_cali_handle)};
 
         if (do_calibration_batt_voltage) {
-                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(batt_voltage_adc_cali_handle, adc_raw[0][0], &voltage[0][0]));
-                ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT + 1, BATT_VOLTAGE_ADC_CHANNEL,
-                         voltage[0][0]);
+                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(batt_voltage_adc_cali_handle, raw_adc_read, &voltage));
+                ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT + 1, BATT_VOLTAGE_ADC_CHANNEL, voltage);
         }
 
         // ADC1 Teardown
         ESP_ERROR_CHECK(adc_oneshot_del_unit(batt_voltage_adc_handle));
-        if (do_calibration_batt_voltage)
+        if (do_calibration_batt_voltage) {
                 adc_calibration_deinit(batt_voltage_adc_cali_handle);
+        }
 
-        return (voltage[0][0] / 1000.f) * VDIV_RATIO;
+        return (voltage / 1000.f) * VDIV_RATIO;
 }
 
-float battery_entity_value(HAEntity const &entity)
+std::unique_ptr<HAEntity> create_battery_entity()
 {
-        std::string const st{entity.state};
-        // NOTE: if this is empty, this value is meaningless.
-        // std::stof causes crashes if it cannot parse this, but strtof does not.
-        return std::strtof(st.c_str(), nullptr);
-}
-
-HAEntity *create_battery_entity()
-{
-        HAEntity *entity = new HAEntity;
+        auto entity = std::make_unique<HAEntity>();
         entity->state = std::to_string(get_battery_voltage());
         entity->entity_id = "sensor.car_battery";
         entity->add_attribute("friendly_name", "Car Battery Voltage");
         entity->add_attribute("unit_of_measurement", "Volts");
         return entity;
 }
+
+} // namespace BatteryMonitor

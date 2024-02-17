@@ -6,96 +6,113 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
-
-#include "secrets.h"
-#include "wifi.h"
 }
 
+#include <chrono>
 #include "battery.hpp"
 #include "esp_ha_lib.hpp"
 #include "nvs_control.hpp"
+#include "secrets.h"
+#include "utils.h"
+#include "wifi.h"
 #include <cstring>
 
-static constexpr const char *TAG{"Main"};
-static constexpr const uint64_t WAKEUP_TIME_SEC{60 * 30};   // 60 sec * 30 min
-static constexpr const uint32_t HARD_SLEEP_TIMEOUT_SEC{10}; // time until deep sleep
-
-// Read and upload battery data to HA
-static void upload_battery_task(void *args)
+namespace BatteryMonitor
 {
-        HAEntity *battery_entity;
-        while (1) {
-                battery_entity = create_battery_entity();
-                if (!battery_entity) {
-                        vTaskDelay(pdMS_TO_TICKS(5000));
-                        continue;
-                }
 
-                battery_entity->print();
+namespace
+{
+
+constexpr auto TAG{"Main"};
+constexpr std::chrono::minutes TIME_IN_DEEP_SLEEP{1};
+constexpr std::chrono::seconds TIME_UNTIL_DEEP_SLEEP{10};
+
+// Read and upload battery data to Home Assistant.
+void upload_battery_task(void *args)
+{
+        while (1) {
+                auto const battery_entity = create_battery_entity();
+
                 ESP_LOGI(TAG, "Waiting for Wi-Fi to upload battery...");
-                if (wait_wifi_connected(pdMS_TO_TICKS(5000))) {
-                        ESP_LOGI(TAG, "Uploading battery to %s", HA_URL);
+                if (Wifi::wait_wifi_connected(Utils::to_ticks(std::chrono::seconds{5}))) {
+                        ESP_LOGI(TAG, "Uploading battery to %s", Secrets::HA_URL.data());
                         battery_entity->post();
                         ESP_LOGI(TAG, "Battery upload attempted.");
                 } else {
                         ESP_LOGI(TAG, "upload_battery timed out. Retrying...");
                 }
-                delete battery_entity;
-                battery_entity = nullptr;
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                battery_entity->print();
+                vTaskDelay(Utils::to_ticks(std::chrono::seconds{1}));
+        }
+}
+
+// Start Wi-Fi state machine.
+void start_wifi_task(void *args)
+{
+        while (1) {
+                Wifi::wifi_init_station();
+                vTaskSuspend(NULL);
         }
 }
 
 // Turn off peripherals and enters deep sleep
-static void start_deep_sleep()
+void start_deep_sleep()
 {
         ESP_LOGI(TAG, "Shutting down peripherals.");
         ESP_LOGI(TAG, "Stopping Wi-Fi.");
-        stop_wifi();
+        Wifi::stop_wifi();
 
         ESP_LOGI(TAG, "Entering Deep Sleep");
         esp_deep_sleep_start();
 }
 
-// Connects to Wi-Fi and suspends
-static void start_wifi_task(void *args)
-{
-        while (1) {
-                wifi_init_sta();
-                vTaskSuspend(NULL);
-        }
-}
+} // namespace
+
 
 extern "C" {
 void app_main(void)
 {
-        bool const ret_nvs_init{init_nvs()};
-        if (!ret_nvs_init) {
-                ESP_LOGI(TAG, "Entering Deep Sleep due to NVS init failure. Monitor has failed.");
-                esp_deep_sleep_start();
+        // Init non-volatile storage (for Wi-Fi).
+        {
+            auto const is_nvs_init_success = Nvs::init_nvs();
+            if (!is_nvs_init_success) {
+                    ESP_LOGI(TAG, "Entering Deep Sleep due to NVS init failure. Monitor has failed.");
+                    esp_deep_sleep_start();
+            }
         }
 
-        set_ha_url(HA_URL);
-        set_long_lived_access_token(LONG_LIVED_ACCESS_TOKEN);
+        // Setup Home Assistant info.
+        {
+            static_assert(!Secrets::LONG_LIVED_ACCESS_TOKEN.empty());
+            static_assert(!Secrets::HA_URL.empty());
+            static_assert(Secrets::HA_URL.back() != '/', "HA URL must not have a leading slash.");
+            esphalib::api::set_ha_url(Secrets::HA_URL.data());
+            esphalib::api::set_long_lived_access_token(Secrets::LONG_LIVED_ACCESS_TOKEN.data());
+        }
 
-        ESP_LOGI(TAG, "Enabling timer wakeup, %llds\n", WAKEUP_TIME_SEC);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_sleep_enable_timer_wakeup(WAKEUP_TIME_SEC * 1000000));
+        // Main.
+        {
+            ESP_LOGI(TAG, "Enabling sleep timer wakeup: %lld minutes until wakeup. \n", TIME_IN_DEEP_SLEEP.count());
+            ESP_ERROR_CHECK_WITHOUT_ABORT(esp_sleep_enable_timer_wakeup(std::chrono::duration_cast<std::chrono::microseconds>(TIME_IN_DEEP_SLEEP).count()));
 
-        // Connect to Wi-Fi
-        TaskHandle_t wifi_task_handle = NULL;
-        xTaskCreate(start_wifi_task, "start wifi task", 4096, NULL, 5, &wifi_task_handle);
+            // Connect to Wi-Fi.
+            TaskHandle_t wifi_task_handle = nullptr;
+            xTaskCreate(start_wifi_task, "start wifi task", 4096, nullptr, 5, &wifi_task_handle);
 
-        // Upload battery
-        TaskHandle_t upload_battery_task_handle = NULL;
-        xTaskCreate(upload_battery_task, "upload battery task", 8192, NULL, 1, &upload_battery_task_handle);
+            // Upload sensor data.
+            TaskHandle_t upload_battery_task_handle = nullptr;
+            xTaskCreate(upload_battery_task, "upload battery task", 4096, nullptr, 1, &upload_battery_task_handle);
 
-        // Calls deep sleep after a set amount of time
-        vTaskDelay(pdMS_TO_TICKS(HARD_SLEEP_TIMEOUT_SEC * 1000));
-        ESP_LOGI(TAG, "Deep Sleep timeout reached");
+            // Go to deep sleep after a set amount of time.
+            vTaskDelay(Utils::to_ticks(TIME_UNTIL_DEEP_SLEEP));
+            ESP_LOGI(TAG, "Deep Sleep timeout reached");
 
-        // Tasks don't need to be cleaned up because
-        // deep sleep will reset the device and clear RAM
-        start_deep_sleep();
+            // NOTE: Tasks don't need to be cleaned up because deep sleep will reset the device and clear RAM.
+            start_deep_sleep();
+        }
 }
 }
+
+} // namespace BatteryMonitor
+
 #endif
