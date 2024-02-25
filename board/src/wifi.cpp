@@ -71,19 +71,18 @@ bool wait_wifi(TickType_t timeout)
 void stop_wifi()
 {
         // ESP_ERROR_CHECK_WITHOUT_ABORT(
-        //     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
-        //     static_cast<esp_event_handler_instance_t>(&event_handler)));
+        //    esp_event_handler_instance_unregister(IP_EVENT, ip_event_t::IP_EVENT_STA_GOT_IP, &event_handler));
         // ESP_ERROR_CHECK_WITHOUT_ABORT(
-        //     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
-        esp_wifi_stop();
+        //    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
         auto const bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE,
                                               Utils::to_ticks(std::chrono::seconds{1}));
         auto const is_wifi_stopped = Utils::are_bits_set(bits, WIFI_STOPPED_BIT);
         if (is_wifi_stopped) {
                 vEventGroupDelete(s_wifi_event_group);
-                ESP_LOGI(TAG, "WiFi stopped.");
+                ESP_LOGI(TAG, "Wi-Fi stopped.");
         } else {
-                ESP_LOGE(TAG, "WiFi did not stop within the timeout period.");
+                ESP_LOGE(TAG, "Wi-Fi did not stop within the timeout period.");
         }
 }
 
