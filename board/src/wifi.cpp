@@ -70,10 +70,6 @@ bool wait_wifi(TickType_t timeout)
 
 void stop_wifi()
 {
-        // ESP_ERROR_CHECK_WITHOUT_ABORT(
-        //    esp_event_handler_instance_unregister(IP_EVENT, ip_event_t::IP_EVENT_STA_GOT_IP, &event_handler));
-        // ESP_ERROR_CHECK_WITHOUT_ABORT(
-        //    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
         auto const bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_STOPPED_BIT, pdFALSE, pdTRUE,
                                               Utils::to_ticks(std::chrono::seconds{1}));
@@ -86,7 +82,6 @@ void stop_wifi()
         }
 }
 
-// NOTE: NVS must be init before this can be run
 void wifi_init_station()
 {
         s_wifi_event_group = xEventGroupCreate();

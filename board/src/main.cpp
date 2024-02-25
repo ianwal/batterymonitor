@@ -7,7 +7,6 @@
 #include "freertos/task.h"
 
 #include "battery.hpp"
-#include "nvs_control.hpp"
 #include "secrets.h"
 #include "utils.h"
 #include "wifi.h"
@@ -54,7 +53,7 @@ void start_wifi_task(void *args)
 }
 
 // Turn off peripherals and enters deep sleep
-void start_deep_sleep()
+[[noreturn]] void start_deep_sleep()
 {
         ESP_LOGI(TAG, "Shutting down peripherals.");
         ESP_LOGI(TAG, "Stopping Wi-Fi.");
@@ -69,15 +68,6 @@ void start_deep_sleep()
 extern "C" {
 void app_main(void)
 {
-        // Init non-volatile storage (for Wi-Fi).
-        {
-                auto const is_nvs_init_success = Nvs::init_nvs();
-                if (!is_nvs_init_success) {
-                        ESP_LOGI(TAG, "Entering Deep Sleep due to NVS init failure. Monitor has failed.");
-                        esp_deep_sleep_start();
-                }
-        }
-
         // Setup Home Assistant info.
         {
                 static_assert(!Secrets::LONG_LIVED_ACCESS_TOKEN.empty());

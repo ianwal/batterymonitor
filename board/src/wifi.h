@@ -1,7 +1,7 @@
 #pragma once
 
 #include "freertos/FreeRTOS.h"
-#include <cstddef>
+
 namespace BatteryMonitor
 {
 
