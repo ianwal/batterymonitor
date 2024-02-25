@@ -57,12 +57,6 @@ void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, voi
 
 } // namespace
 
-bool wait_wifi_connected(TickType_t timeout)
-{
-        auto const bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, timeout);
-        return Utils::are_bits_set(bits, WIFI_CONNECTED_BIT);
-}
-
 bool wait_wifi(TickType_t timeout)
 {
         // Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
@@ -105,13 +99,14 @@ void wifi_init_station()
 
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        ESP_ERROR_CHECK(esp_wifi_set_storage(wifi_storage_t::WIFI_STORAGE_RAM));
 
         esp_event_handler_instance_t instance_any_id{nullptr};
-        esp_event_handler_instance_t instance_got_ip{nullptr};
         ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, nullptr,
                                                             &instance_any_id));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, nullptr,
-                                                            &instance_got_ip));
+        esp_event_handler_instance_t instance_got_ip{nullptr};
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, ip_event_t::IP_EVENT_STA_GOT_IP, &event_handler,
+                                                            nullptr, &instance_got_ip));
 
         wifi_sta_config_t wifi_config{};
         // Ensure these are filled in. No point in running the program if they aren't.
@@ -126,6 +121,7 @@ void wifi_init_station()
         wifi_config.threshold.authmode = WIFI_AUTH_WPA2_PSK;
         wifi_config_t u_wifi_config;
         u_wifi_config.sta = wifi_config;
+        ESP_ERROR_CHECK(esp_wifi_set_mode(wifi_mode_t::WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_STA, &u_wifi_config));
         ESP_ERROR_CHECK(esp_wifi_start());
 }
