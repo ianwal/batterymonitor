@@ -1,5 +1,4 @@
 #include "esp_ha_lib.hpp"
-#include "nvs_control.hpp"
 #include "secrets.h"
 #include "wifi.h"
 #include <gtest/gtest.h>
@@ -41,12 +40,6 @@ int app_main(int argc, char **argv)
 
         // Setup WiFi
         {
-                // Init non-volatile storage.
-                {
-                        auto const is_nvs_init_success = Nvs::init_nvs();
-                        // Don't continue if NVS init failed because Wi-Fi won't work either
-                        EXPECT_TRUE(is_nvs_init_success);
-                }
                 Wifi::wifi_init_station();
         }
 
