@@ -92,6 +92,7 @@ void wifi_init_station()
         esp_netif_create_default_wifi_sta();
 
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        cfg.nvs_enable = 0; // Use RAM instead of NVS for storing Wi-Fi config.
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_wifi_set_storage(wifi_storage_t::WIFI_STORAGE_RAM));
 
