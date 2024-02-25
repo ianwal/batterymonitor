@@ -21,8 +21,10 @@ namespace
 
 constexpr auto TAG{"Main"};
 
-constexpr std::chrono::minutes TIME_IN_DEEP_SLEEP{30};
-constexpr std::chrono::seconds TIME_UNTIL_DEEP_SLEEP{10};
+using namespace std::literals::chrono_literals;
+
+constexpr auto TIME_IN_DEEP_SLEEP{30min};
+constexpr auto TIME_UNTIL_DEEP_SLEEP{10s};
 
 // Read and upload battery data to Home Assistant.
 void upload_battery_task(void *args)
@@ -31,7 +33,7 @@ void upload_battery_task(void *args)
                 auto const battery_entity = create_battery_entity();
 
                 ESP_LOGI(TAG, "Waiting for Wi-Fi to upload battery...");
-                if (Wifi::wait_wifi(Utils::to_ticks(std::chrono::seconds{5}))) {
+                if (Wifi::wait_wifi(Utils::to_ticks(5s))) {
                         ESP_LOGI(TAG, "Uploading battery to %s", Secrets::HA_URL.data());
                         battery_entity->post();
                         ESP_LOGI(TAG, "Battery upload attempted.");
@@ -39,7 +41,7 @@ void upload_battery_task(void *args)
                         ESP_LOGI(TAG, "upload_battery timed out. Retrying...");
                 }
                 battery_entity->print();
-                vTaskDelay(Utils::to_ticks(std::chrono::seconds{1}));
+                vTaskDelay(Utils::to_ticks(1s));
         }
 }
 
@@ -79,7 +81,8 @@ void app_main(void)
 
         // Main.
         {
-                ESP_LOGI(TAG, "Enabling sleep timer wakeup: %lld minutes until wakeup. \n", TIME_IN_DEEP_SLEEP.count());
+                ESP_LOGI(TAG, "Enabling sleep timer wakeup: %d minutes until wakeup. \n",
+                         static_cast<int>(TIME_IN_DEEP_SLEEP.count()));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(esp_sleep_enable_timer_wakeup(
                     std::chrono::duration_cast<std::chrono::microseconds>(TIME_IN_DEEP_SLEEP).count()));
 
